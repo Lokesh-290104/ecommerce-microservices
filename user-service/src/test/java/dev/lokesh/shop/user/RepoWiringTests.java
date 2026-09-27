@@ -86,6 +86,42 @@ class RepoWiringTests {
         assertEquals(svc + "s_db", url.substring(url.lastIndexOf('/') + 1));
     }
 
+    @ParameterizedTest(name = "{0}")
+    @CsvSource({"user-service", "product-service", "order-service", "payment-service"})
+    void dbHostAndPortAgreeWithMysqlService(String service) throws IOException {
+        // Host side: application.yml default port == compose's published MySQL port == .env.example.
+        List<?> mysqlPorts = get(compose, "services", "mysql", "ports");
+        Matcher m = Pattern.compile("^127\\.0\\.0\\.1:\\$\\{MYSQL_HOST_PORT:-(\\d+)}:(\\d+)$")
+                .matcher(mysqlPorts.get(0).toString());
+        assertTrue(m.matches(), mysqlPorts.toString());
+        String hostPort = m.group(1);
+        String containerPort = m.group(2);
+        Map<String, Object> appYml = yaml(ROOT.resolve(service).resolve("src/main/resources/application.yml"));
+        String url = get(appYml, "spring", "datasource", "url");
+        assertTrue(url.startsWith("jdbc:mysql://${DB_HOST:localhost}:${DB_PORT:" + hostPort + "}/"), url);
+        assertTrue(Pattern.compile("(?m)^MYSQL_HOST_PORT=" + hostPort + "\\r?$")
+                .matcher(Files.readString(ROOT.resolve(".env.example"))).find(), ".env.example MYSQL_HOST_PORT");
+
+        // Inside compose: the service reaches the mysql service on its container port.
+        Map<String, Object> env = get(compose, "services", service, "environment");
+        assertEquals("mysql", env.get("DB_HOST"));
+        assertEquals(containerPort, env.get("DB_PORT").toString());
+    }
+
+    @Test
+    void mysqlHealthcheckLogsInAsTheLastUserInitCreates() {
+        // A half-run init leaves later users missing; logging in as the last one makes
+        // "healthy" mean "init finished". (mysqladmin ping passes even on access denied.)
+        Matcher users = Pattern.compile("CREATE USER IF NOT EXISTS '(\\w+)'").matcher(initScript);
+        String last = null;
+        while (users.find()) {
+            last = users.group(1);
+        }
+        List<?> test = get(compose, "services", "mysql", "healthcheck", "test");
+        String cmd = test.get(test.size() - 1).toString();
+        assertTrue(cmd.contains("-u" + last + " ") && !cmd.contains("mysqladmin ping"), cmd);
+    }
+
     @Test
     void initScriptGrantsEachUserOnlyItsOwnSchema() {
         Matcher m = Pattern.compile("GRANT\\s+(.+?)\\s+ON\\s+(\\S+)\\s+TO\\s+'(\\w+)'@'%'").matcher(initScript);

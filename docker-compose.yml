@@ -1,11 +1,17 @@
 # One MySQL container with one schema per service, plus the four services.
-# Run from WSL (Docker lives there):  docker compose up -d --build
+# The images copy prebuilt jars, so build first with scripts/build.sh (./mvnw package,
+# then docker compose build). Then, from WSL:  docker compose up -d --wait
 # Every published port binds to 127.0.0.1 only. Passwords default to local dev values;
 # override them in a .env file (see .env.example).
 name: shop
 
 x-service: &service
   restart: unless-stopped
+  # Four JVMs share one WSL VM: cap each container so the container-aware JVM sizes
+  # its heap from 512m instead of from the whole VM.
+  mem_limit: 512m
+  environment: &service-env
+    JAVA_TOOL_OPTIONS: -XX:MaxRAMPercentage=75
   depends_on:
     mysql:
       condition: service_healthy
@@ -34,9 +40,10 @@ services:
       - mysql-data:/var/lib/mysql
       - ./docker/mysql/init:/docker-entrypoint-initdb.d:ro
     healthcheck:
-      # TCP ping: the init phase runs with networking off, so this only passes once
-      # the init script has finished and the real server is listening.
-      test: ["CMD-SHELL", "mysqladmin ping -h 127.0.0.1 -uroot -p\"$$MYSQL_ROOT_PASSWORD\" --silent"]
+      # Log in over TCP as the last user the init script creates. Init runs with
+      # networking off, and a failed init leaves this user missing, so healthy means
+      # "init finished". (mysqladmin ping would pass even on access denied.)
+      test: ["CMD-SHELL", "mysql -h 127.0.0.1 -upayment_svc -p\"$$PAYMENT_SVC_DB_PASSWORD\" -e 'SELECT 1' payments_db"]
       interval: 5s
       timeout: 3s
       retries: 30
@@ -45,6 +52,7 @@ services:
     <<: *service
     build: ./user-service
     environment:
+      <<: *service-env
       DB_HOST: mysql
       DB_PORT: 3306
       DB_PASSWORD: ${USER_SVC_DB_PASSWORD:-user_svc_dev_pw}
@@ -58,6 +66,7 @@ services:
     <<: *service
     build: ./product-service
     environment:
+      <<: *service-env
       DB_HOST: mysql
       DB_PORT: 3306
       DB_PASSWORD: ${PRODUCT_SVC_DB_PASSWORD:-product_svc_dev_pw}
@@ -71,6 +80,7 @@ services:
     <<: *service
     build: ./order-service
     environment:
+      <<: *service-env
       DB_HOST: mysql
       DB_PORT: 3306
       DB_PASSWORD: ${ORDER_SVC_DB_PASSWORD:-order_svc_dev_pw}
@@ -84,6 +94,7 @@ services:
     <<: *service
     build: ./payment-service
     environment:
+      <<: *service-env
       DB_HOST: mysql
       DB_PORT: 3306
       DB_PASSWORD: ${PAYMENT_SVC_DB_PASSWORD:-payment_svc_dev_pw}

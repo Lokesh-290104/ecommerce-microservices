@@ -10,16 +10,19 @@ import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.List;
+import java.util.Map;
 import java.util.concurrent.TimeUnit;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertTrue;
+import static org.junit.jupiter.api.Assumptions.assumeFalse;
 import static org.junit.jupiter.api.Assumptions.assumeTrue;
 
 /**
- * Runs the real scripts/build.sh (copied, unmodified) against stub mvnw / docker / wsl.exe on a
- * PATH that contains only the stubs, so no real Maven or Docker is touched. Each stub appends
- * "name args" to calls.log. Lives in one module only; it tests a repo-level script.
+ * Runs the repo's real shell scripts (scripts/build.sh and the MySQL init script, copied
+ * unmodified) against stub mvnw / docker / wsl.exe / mysql on a PATH that contains only the
+ * stubs, so no real Maven, Docker or MySQL is touched. Each stub appends "name args" to
+ * calls.log. Lives in one module only; it tests repo-level scripts.
  */
 class BuildScriptTests {
 
@@ -34,8 +37,12 @@ class BuildScriptTests {
     @BeforeEach
     void setUp() throws IOException {
         // On Windows plain "bash" may be WSL's System32\bash.exe; use Git Bash explicitly.
-        Path candidate = WINDOWS ? Path.of("C:\\Program Files\\Git\\bin\\bash.exe") : Path.of("/bin/bash");
-        assumeTrue(Files.isExecutable(candidate), "bash not available at " + candidate);
+        // GIT_BASH overrides the default install location.
+        String override = System.getenv("GIT_BASH");
+        Path candidate = override != null && !override.isBlank() ? Path.of(override)
+                : WINDOWS ? Path.of("C:\\Program Files\\Git\\bin\\bash.exe") : Path.of("/bin/bash");
+        assumeTrue(Files.isExecutable(candidate),
+                "bash not found at " + candidate + "; set GIT_BASH to run the build.sh tests");
         bash = candidate.toString();
 
         Files.createDirectories(repo.resolve("scripts"));
@@ -61,35 +68,43 @@ class BuildScriptTests {
     }
 
     @Test
-    void noLocalDaemonFallsBackToWsl() throws Exception {
+    void gitBashWithoutLocalDaemonFallsBackToWsl() throws Exception {
+        assumeTrue(WINDOWS, "the WSL branch needs Git Bash's `pwd -W`");
         stub(bin.resolve("docker"), "docker", 1); // docker CLI present but `docker info` fails
         stub(bin.resolve("wsl.exe"), "wsl.exe", 0);
 
         Result r = run();
 
         assertEquals(0, r.exit, r.stderr);
-        assertEquals(3, r.calls.size(), r.calls.toString());
-        assertEquals("mvnw -B package", r.calls.get(0));
-        assertEquals("docker info", r.calls.get(1));
-        String wsl = r.calls.get(2);
-        assertTrue(wsl.startsWith("wsl.exe --cd ") && wsl.endsWith(" docker compose build"), wsl);
-        if (WINDOWS) {
-            // `pwd -W` is Git Bash only: the Windows form of the repo dir, which WSL can translate.
-            String cd = wsl.substring("wsl.exe --cd ".length(), wsl.length() - " docker compose build".length());
-            assertEquals(repo.toRealPath().toString().replace('\\', '/').toLowerCase(), cd.toLowerCase());
-        }
+        assertEquals(List.of("mvnw -B package", "docker info", "wsl.exe --cd " + windowsPath(repo)
+                + " docker compose build"), lowerWslPath(r.calls));
     }
 
     @Test
-    void dockerCliMissingAndWslPresentUsesWsl() throws Exception {
+    void gitBashWithoutDockerCliUsesWsl() throws Exception {
+        assumeTrue(WINDOWS, "the WSL branch needs Git Bash's `pwd -W`");
         stub(bin.resolve("wsl.exe"), "wsl.exe", 0);
 
         Result r = run();
 
         assertEquals(0, r.exit, r.stderr);
-        assertEquals("mvnw -B package", r.calls.get(0));
-        assertTrue(r.calls.get(1).startsWith("wsl.exe --cd ") && r.calls.get(1).endsWith(" docker compose build"),
-                r.calls.toString());
+        assertEquals(List.of("mvnw -B package", "wsl.exe --cd " + windowsPath(repo) + " docker compose build"),
+                lowerWslPath(r.calls));
+    }
+
+    @Test
+    void realBashNeverTakesTheWslBranch() throws Exception {
+        // Inside WSL, wsl.exe is on PATH via interop but `pwd -W` does not exist: report the
+        // local daemon's own error instead of running `wsl.exe --cd ""`.
+        assumeFalse(WINDOWS, "Git Bash supports `pwd -W`");
+        stub(bin.resolve("docker"), "docker", 1);
+        stub(bin.resolve("wsl.exe"), "wsl.exe", 0);
+
+        Result r = run();
+
+        assertEquals(1, r.exit);
+        assertTrue(r.stderr.contains("No usable Docker daemon"), r.stderr);
+        assertEquals(List.of("mvnw -B package", "docker info", "docker info"), r.calls);
     }
 
     @Test
@@ -97,8 +112,56 @@ class BuildScriptTests {
         Result r = run();
 
         assertEquals(1, r.exit);
-        assertTrue(r.stderr.contains("No Docker daemon found (tried docker and wsl.exe)."), r.stderr);
+        assertTrue(r.stderr.contains("No usable Docker daemon (tried docker, and wsl.exe from Git Bash)."), r.stderr);
         assertEquals(List.of("mvnw -B package"), r.calls);
+    }
+
+    @Test
+    void mysqlInitRejectsPasswordsThatBreakTheSqlLiteral() throws Exception {
+        for (String bad : List.of("it's", "back\\slash", "")) {
+            Result r = runInit(bad);
+            assertEquals(1, r.exit, "password [" + bad + "]");
+            assertTrue(r.stderr.contains("ORDER_SVC_DB_PASSWORD must be non-empty"), r.stderr);
+            assertEquals(List.of(), r.calls, "mysql must not run");
+        }
+    }
+
+    @Test
+    void mysqlInitRunsSqlForValidPasswords() throws Exception {
+        Result r = runInit("order_svc_dev_pw");
+
+        assertEquals(0, r.exit, r.stderr);
+        assertEquals(1, r.calls.size(), r.calls.toString());
+        assertTrue(r.calls.get(0).startsWith("mysql --protocol=socket -uroot"), r.calls.toString());
+    }
+
+    /** Runs the real MySQL init script with a stub mysql; only ORDER_SVC_DB_PASSWORD varies. */
+    private Result runInit(String orderPassword) throws Exception {
+        Files.deleteIfExists(repo.resolve("calls.log"));
+        Path script = repo.resolve("01-databases.sh");
+        Files.copy(ROOT.resolve("docker/mysql/init/01-databases.sh"), script,
+                java.nio.file.StandardCopyOption.REPLACE_EXISTING);
+        stub(bin.resolve("mysql"), "mysql", 0);
+        ProcessBuilder pb = new ProcessBuilder(bash, script.toString()).directory(repo.toFile());
+        Map<String, String> env = pb.environment();
+        env.put("PATH", bin.toString());
+        env.remove("Path");
+        env.put("MYSQL_ROOT_PASSWORD", "root_dev_pw");
+        env.put("USER_SVC_DB_PASSWORD", "user_svc_dev_pw");
+        env.put("PRODUCT_SVC_DB_PASSWORD", "product_svc_dev_pw");
+        env.put("ORDER_SVC_DB_PASSWORD", orderPassword);
+        env.put("PAYMENT_SVC_DB_PASSWORD", "payment_svc_dev_pw");
+        return finish(pb);
+    }
+
+    /** What Git Bash's `pwd -W` prints for dir: the Windows path with forward slashes. */
+    private static String windowsPath(Path dir) throws IOException {
+        return dir.toRealPath().toString().replace('\\', '/').toLowerCase();
+    }
+
+    /** Drive letter / short-name casing can differ between Java and Git Bash; compare wsl.exe lines lowercased. */
+    private static List<String> lowerWslPath(List<String> calls) {
+        return calls.stream().map(c -> c.startsWith("wsl.exe --cd ") ? c.toLowerCase() : c).toList();
     }
 
     @Test
@@ -121,6 +184,10 @@ class BuildScriptTests {
         ProcessBuilder pb = new ProcessBuilder(cmd).directory(repo.toFile());
         pb.environment().put("PATH", bin.toString());
         pb.environment().remove("Path"); // Windows keeps a case-variant copy
+        return finish(pb);
+    }
+
+    private Result finish(ProcessBuilder pb) throws Exception {
         Path err = repo.resolve("stderr.txt");
         pb.redirectError(err.toFile()).redirectOutput(ProcessBuilder.Redirect.DISCARD);
         Process p = pb.start();

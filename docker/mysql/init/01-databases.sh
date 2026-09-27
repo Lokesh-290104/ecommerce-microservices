@@ -4,6 +4,17 @@
 # that schema, so a cross-service join is impossible, not just discouraged.
 set -euo pipefail
 
+# The passwords are spliced into SQL string literals below, so refuse the characters
+# that would break out of them. Failing here is loud; a half-run init is not, because
+# MySQL skips this directory on every later start of the same volume.
+for var in USER_SVC_DB_PASSWORD PRODUCT_SVC_DB_PASSWORD ORDER_SVC_DB_PASSWORD PAYMENT_SVC_DB_PASSWORD; do
+    case "${!var}" in
+        "" | *"'"* | *\\*)
+            echo "01-databases.sh: $var must be non-empty and contain no ' or \\" >&2
+            exit 1 ;;
+    esac
+done
+
 mysql --protocol=socket -uroot -p"${MYSQL_ROOT_PASSWORD}" <<SQL
 CREATE DATABASE IF NOT EXISTS users_db;
 CREATE DATABASE IF NOT EXISTS products_db;
@@ -19,5 +30,4 @@ GRANT ALL PRIVILEGES ON users_db.*    TO 'user_svc'@'%';
 GRANT ALL PRIVILEGES ON products_db.* TO 'product_svc'@'%';
 GRANT ALL PRIVILEGES ON orders_db.*   TO 'order_svc'@'%';
 GRANT ALL PRIVILEGES ON payments_db.* TO 'payment_svc'@'%';
-FLUSH PRIVILEGES;
 SQL
