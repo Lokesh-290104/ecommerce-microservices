@@ -19,6 +19,9 @@ x-health: &health
 services:
   mysql:
     image: mysql:8.4
+    # Services restart on their own; without this MySQL would stay down after a
+    # WSL/daemon restart and every service health check would report db DOWN.
+    restart: unless-stopped
     environment:
       MYSQL_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD:-root_dev_pw}
       USER_SVC_DB_PASSWORD: ${USER_SVC_DB_PASSWORD:-user_svc_dev_pw}
