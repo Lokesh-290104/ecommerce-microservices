@@ -30,7 +30,15 @@ docker compose up -d --wait
 curl localhost:8081/actuator/health
 ```
 
-MySQL is published on `127.0.0.1:3307` (override with `MYSQL_HOST_PORT`). Local dev
-passwords live in `.env.example`; copy it to `.env` to change them.
+On Windows with Docker in WSL, run the compose commands inside WSL, e.g. from Git Bash:
+`wsl.exe --cd "$(pwd -W)" docker compose up -d --wait`.
 
-Tests only: `./mvnw verify`
+MySQL is published on `127.0.0.1:3307` (override with `MYSQL_HOST_PORT`). Local dev
+passwords live in `.env.example`; copy it to `.env` to change them. Passwords are set only
+when the MySQL volume is first created, so after changing one run `docker compose down -v`
+(otherwise MySQL stays unhealthy and no service starts). A password must not contain `'`
+or `\`, and a literal `$` is written as `$$`.
+
+Tests only: `./mvnw verify` (offline: no MySQL or Docker needed).
+
+Release notes are in [CHANGELOG.md](CHANGELOG.md); deferred work is in [TODOS.md](TODOS.md).
