@@ -1,0 +1,6 @@
+* text=auto
+# Shell scripts run inside Linux (WSL, containers, CI): always LF.
+*.sh   text eol=lf
+mvnw   text eol=lf
+# Windows scripts: always CRLF.
+*.cmd  text eol=crlf
