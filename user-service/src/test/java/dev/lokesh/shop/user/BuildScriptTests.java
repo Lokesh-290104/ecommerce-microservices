@@ -118,10 +118,12 @@ class BuildScriptTests {
 
     @Test
     void mysqlInitRejectsPasswordsThatBreakTheSqlLiteral() throws Exception {
-        for (String bad : List.of("it's", "back\\slash", "")) {
+        // null = variable unset; the guard (not bash's `unbound variable`) must name it.
+        for (String bad : java.util.Arrays.asList("it's", "back\\slash", "", null)) {
             Result r = runInit(bad);
             assertEquals(1, r.exit, "password [" + bad + "]");
             assertTrue(r.stderr.contains("ORDER_SVC_DB_PASSWORD must be non-empty"), r.stderr);
+            assertTrue(r.stderr.contains("docker compose down -v"), r.stderr);
             assertEquals(List.of(), r.calls, "mysql must not run");
         }
     }
@@ -149,7 +151,11 @@ class BuildScriptTests {
         env.put("MYSQL_ROOT_PASSWORD", "root_dev_pw");
         env.put("USER_SVC_DB_PASSWORD", "user_svc_dev_pw");
         env.put("PRODUCT_SVC_DB_PASSWORD", "product_svc_dev_pw");
-        env.put("ORDER_SVC_DB_PASSWORD", orderPassword);
+        if (orderPassword == null) {
+            env.remove("ORDER_SVC_DB_PASSWORD");
+        } else {
+            env.put("ORDER_SVC_DB_PASSWORD", orderPassword);
+        }
         env.put("PAYMENT_SVC_DB_PASSWORD", "payment_svc_dev_pw");
         return finish(pb);
     }

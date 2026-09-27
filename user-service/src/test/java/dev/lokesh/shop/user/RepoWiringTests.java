@@ -117,9 +117,29 @@ class RepoWiringTests {
         while (users.find()) {
             last = users.group(1);
         }
+        String svc = last.substring(0, last.length() - "_svc".length());
         List<?> test = get(compose, "services", "mysql", "healthcheck", "test");
         String cmd = test.get(test.size() - 1).toString();
-        assertTrue(cmd.contains("-u" + last + " ") && !cmd.contains("mysqladmin ping"), cmd);
+        // Same user, that user's own password var ($$ so compose leaves it for the container
+        // shell) and the schema it was granted last.
+        assertTrue(cmd.startsWith("mysql -h 127.0.0.1 -u" + last + " "), cmd);
+        assertTrue(cmd.contains("-p\"$$" + svc.toUpperCase() + "_SVC_DB_PASSWORD\""), cmd);
+        assertTrue(cmd.endsWith(" " + svc + "s_db"), cmd);
+    }
+
+    @Test
+    void everyBuiltServiceKeepsTheMemoryCap() {
+        // environment: in a service replaces the anchor's (shallow merge), so check the result.
+        Map<String, Object> services = get(compose, "services");
+        services.forEach((name, def) -> {
+            Map<?, ?> service = (Map<?, ?>) def;
+            if (service.containsKey("build")) {
+                assertEquals("512m", service.get("mem_limit"), name + " mem_limit");
+                Object opts = ((Map<?, ?>) service.get("environment")).get("JAVA_TOOL_OPTIONS");
+                assertTrue(opts != null && opts.toString().contains("-XX:MaxRAMPercentage="),
+                        name + " JAVA_TOOL_OPTIONS: " + opts);
+            }
+        });
     }
 
     @Test

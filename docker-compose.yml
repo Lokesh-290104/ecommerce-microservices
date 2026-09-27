@@ -5,13 +5,17 @@
 # override them in a .env file (see .env.example).
 name: shop
 
+# Merged into each service's environment. YAML << merges are shallow, so a service that
+# declares environment: must start it with <<: *service-env (RepoWiringTests checks this).
+# 60% of 512m leaves ~200m for metaspace, threads and buffers outside the heap.
+x-service-env: &service-env
+  JAVA_TOOL_OPTIONS: -XX:MaxRAMPercentage=60
+
 x-service: &service
   restart: unless-stopped
   # Four JVMs share one WSL VM: cap each container so the container-aware JVM sizes
   # its heap from 512m instead of from the whole VM.
   mem_limit: 512m
-  environment: &service-env
-    JAVA_TOOL_OPTIONS: -XX:MaxRAMPercentage=75
   depends_on:
     mysql:
       condition: service_healthy
@@ -43,10 +47,13 @@ services:
       # Log in over TCP as the last user the init script creates. Init runs with
       # networking off, and a failed init leaves this user missing, so healthy means
       # "init finished". (mysqladmin ping would pass even on access denied.)
+      # Stuck unhealthy after editing a password in .env? The volume still has the old
+      # one: docker compose down -v
       test: ["CMD-SHELL", "mysql -h 127.0.0.1 -upayment_svc -p\"$$PAYMENT_SVC_DB_PASSWORD\" -e 'SELECT 1' payments_db"]
       interval: 5s
       timeout: 3s
       retries: 30
+      start_period: 120s   # a cold first init on WSL can be slow
 
   user-service:
     <<: *service

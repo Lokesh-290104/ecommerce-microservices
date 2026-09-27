@@ -8,9 +8,10 @@ set -euo pipefail
 # that would break out of them. Failing here is loud; a half-run init is not, because
 # MySQL skips this directory on every later start of the same volume.
 for var in USER_SVC_DB_PASSWORD PRODUCT_SVC_DB_PASSWORD ORDER_SVC_DB_PASSWORD PAYMENT_SVC_DB_PASSWORD; do
-    case "${!var}" in
+    case "${!var-}" in
         "" | *"'"* | *\\*)
-            echo "01-databases.sh: $var must be non-empty and contain no ' or \\" >&2
+            echo "01-databases.sh: $var must be non-empty and contain no ' or \\." \
+                 "Fix it in .env, then run: docker compose down -v (this volume is now half-initialized)" >&2
             exit 1 ;;
     esac
 done
