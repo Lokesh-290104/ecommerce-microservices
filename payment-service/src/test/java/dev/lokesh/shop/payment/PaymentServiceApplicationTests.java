@@ -27,4 +27,12 @@ class PaymentServiceApplicationTests {
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.status").value("UP"));
     }
+
+    @Test
+    void healthListsComponentsForOperators() throws Exception {
+        // show-components: always, so a compose healthcheck failure says which contributor is down.
+        mvc.perform(get("/actuator/health"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.components.ping.status").value("UP"));
+    }
 }
