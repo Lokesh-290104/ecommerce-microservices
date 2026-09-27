@@ -128,6 +128,13 @@ class RepoWiringTests {
     }
 
     @Test
+    void mysqlRootIsNotReachableFromTheNetwork() {
+        // The dev root password is public; without this the image creates root@'%'.
+        Map<String, Object> env = get(compose, "services", "mysql", "environment");
+        assertEquals("localhost", env.get("MYSQL_ROOT_HOST"));
+    }
+
+    @Test
     void everyBuiltServiceKeepsTheMemoryCap() {
         // environment: in a service replaces the anchor's (shallow merge), so check the result.
         Map<String, Object> services = get(compose, "services");
