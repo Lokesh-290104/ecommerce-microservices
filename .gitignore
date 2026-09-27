@@ -1,0 +1,25 @@
+# Build output
+target/
+*.class
+*.jar
+!.mvn/wrapper/maven-wrapper.jar
+
+# IDE
+.idea/
+*.iml
+.vscode/
+.classpath
+.project
+.settings/
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Local env / secrets
+.env
+*.env.local
+
+# Design-review tool scratch
+docs/designs/*.review.*/
+
