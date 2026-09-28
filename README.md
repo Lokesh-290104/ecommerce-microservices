@@ -39,7 +39,8 @@ granted only its own schema, so a cross-service join is refused by the database 
 - [x] Inventory reservations: all-or-nothing, idempotent reserve / commit / release,
       tested with real concurrent races (20 buyers, last 5 units: exactly 5 succeed)
 - [x] Integration tests on real MySQL (Testcontainers) + GitHub Actions CI
-- [ ] Payments with one-payment-per-order idempotency
+- [x] Payments: simulated gateway, at most one payment per order (10 concurrent charges -> 1 row),
+      and a demo switch that delays charge responses to reproduce timeouts
 - [ ] Checkout saga: idempotency keys, circuit breakers and timeouts (Resilience4j), and a
       reconciler that settles orders after an outage
 - [ ] Measured query optimization (k6 + SQL counts)
@@ -127,12 +128,23 @@ or `\`, and a literal `$` is written as `$$`.
 | product | `POST /api/inventory/reservations/{orderId}/commit` | internal | Paid: stock leaves (`on_hand` and `reserved` both drop); idempotent |
 | product | `DELETE /api/inventory/reservations/{orderId}` | internal | Release: stock returns; before any reserve it leaves a tombstone that blocks a late reserve |
 
+| payment | `POST /api/payments` | internal | `{orderId, amount, paymentToken}`: 201 new, 200 replay of the stored outcome, 409 if the amount differs |
+| payment | `GET /api/payments/{id}` | internal | 404 if unknown |
+| payment | `GET /api/payments?orderId=` | internal | What happened to an order's charge; never delayed (the reconciler relies on it) |
+
 **Stock reservations** are plain SQL, one conditional `UPDATE ... WHERE on_hand - reserved >= q`
 per item, so the database itself refuses to oversell. The order id is the reservation's primary
 key, which makes every call idempotent: a retried reserve replays the stored result (with the
 prices captured the first time), a changed one gets 409. Items are updated in product-id order,
 so two orders sharing products can't deadlock, and lock-timeout losers are retried because every
 operation is safe to repeat. Tests race 20 real threads against MySQL for the last 5 units.
+
+**Payments** are charged at most once per order: `UNIQUE(order_id)` makes the database the
+referee when a checkout retry and the reconciler charge the same order at the same moment; the
+loser re-reads and returns the winner's payment. The gateway is simulated
+(`tok_decline` is declined, anything else approved), and `PAYMENT_RESPONSE_DELAY_MS` holds back
+every charge response *after* it is committed, to demo a charge that succeeded while its
+caller timed out.
 
 **Security:** every service is a stateless OAuth2 resource server that verifies HS256 tokens
 with a shared `JWT_SECRET` (at least 32 bytes; a service without it refuses to start).
