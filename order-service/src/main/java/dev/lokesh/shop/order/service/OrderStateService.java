@@ -106,8 +106,8 @@ public class OrderStateService {
     }
 
     /**
-     * v1 listing, the straightforward way on purpose (design D26): each order's lines and history
-     * are loaded one order at a time while mapping. Step 8 benchmarks this, then fixes it.
+     * The caller's orders (step 8): lines and history load in one batch each for the whole page
+     * (@BatchSize on Order), instead of one query per order as in v1; see benchmarks/.
      */
     @Transactional(readOnly = true)
     public Page<OrderView> listForUser(long userId, Pageable pageable) {
