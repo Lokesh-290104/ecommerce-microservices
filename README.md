@@ -1,13 +1,79 @@
 # E-Commerce Microservices: Resilient Checkout
 
-Four Spring Boot 4.1 services (users, products, orders, payments) on Java 21, each with its
-own MySQL schema, built so that checkout survives a payment-service outage without losing
-stock or double-charging. The design is in
+[![CI](https://github.com/Lokesh-290104/ecommerce-microservices/actions/workflows/ci.yml/badge.svg)](https://github.com/Lokesh-290104/ecommerce-microservices/actions/workflows/ci.yml)
+![Java 21](https://img.shields.io/badge/Java-21-orange)
+![Spring Boot 4.1](https://img.shields.io/badge/Spring%20Boot-4.1-6DB33F)
+![MySQL 8.4](https://img.shields.io/badge/MySQL-8.4-4479A1)
+
+Four Spring Boot microservices (users, products, orders, payments), each with its own MySQL
+schema, designed so that **checkout survives a payment-service outage**: no lost orders, no
+leaked stock and no double charges. Every behaviour is covered by tests that run against a real
+MySQL, both locally and in CI.
+
+## Architecture
+
+```mermaid
+flowchart LR
+    client([Client]) --> user[user-service :8081]
+    client --> product[product-service :8082]
+    client --> order[order-service :8083]
+    order -- RestClient --> user
+    order -- "reserve / commit / release stock" --> product
+    order -- "charge (idempotent per order)" --> payment[payment-service :8084]
+    user --> udb[(users_db)]
+    product --> pdb[(products_db)]
+    order --> odb[(orders_db)]
+    payment --> paydb[(payments_db)]
+```
+
+One MySQL 8.4 container holds four schemas. Each service logs in as its own MySQL user that is
+granted only its own schema, so a cross-service join is refused by the database itself.
+
+## Status
+
+- [x] Four services, Docker Compose stack with health-gated startup, one-command build
+- [x] Users API: registration with BCrypt, unique email, paging, soft delete
+- [x] Catalog API: products with separate inventory rows, optimistic locking (409 on stale edits)
+- [x] Flyway migrations, RFC 7807 problem responses, request validation
+- [x] Integration tests on real MySQL (Testcontainers) + GitHub Actions CI
+- [ ] Inventory reservations (atomic, idempotent, concurrency-tested)
+- [ ] Payments with one-payment-per-order idempotency
+- [ ] Checkout saga: idempotency keys, circuit breakers and timeouts (Resilience4j), and a
+      reconciler that settles orders after an outage
+- [ ] JWT authentication and service-to-service tokens
+- [ ] Measured query optimization (k6 + SQL counts)
+
+The full design, with the reasoning behind every decision (D10-D27), is in
 [docs/designs/resilient-checkout-microservices.md](docs/designs/resilient-checkout-microservices.md).
 
-> Work in progress. So far this is the scaffold: the four services, Docker images, and a
-> compose stack whose health checks are green. Features land step by step (see the
-> design doc's Next Steps).
+## Engineering highlights
+
+- **Database-per-service enforced, not just agreed:** per-service MySQL users with
+  schema-scoped grants; root is limited to `localhost`. A test proves each user is refused on
+  the other schemas.
+- **Stock separate from catalog:** `inventory` lives beside `products`, so catalog edits
+  (optimistic `@Version`) never conflict with stock changes; `available = on_hand - reserved`,
+  guarded by a database CHECK constraint.
+- **Honest health checks:** MySQL reports healthy only after its init script has finished,
+  because the check logs in as the last user the script creates (`mysqladmin ping` passes even
+  on access denied). A bad password fails setup loudly instead of producing a MySQL with no users.
+- **Consistent errors:** every error is an RFC 7807 `application/problem+json` body with a
+  machine-readable `code`; validation errors list each bad field.
+- **Tests that match production:** integration tests start MySQL 8.4 with the same init script
+  as Compose; config tests pin ports, jar names and passwords across Compose, Dockerfiles and
+  application config so they cannot drift.
+
+## Try it in 60 seconds
+
+```bash
+scripts/build.sh && docker compose up -d --wait      # build jars + images, start everything
+
+curl -s -X POST localhost:8081/api/users -H 'Content-Type: application/json'   -d '{"email":"ada@example.com","password":"correct-horse","name":"Ada"}'
+
+curl -s -X POST localhost:8082/api/products -H 'Content-Type: application/json'   -d '{"categoryId":1,"name":"Headphones","price":199.99,"initialStock":25}'
+
+curl -s 'localhost:8082/api/products?categoryId=1&size=5'
+```
 
 | Service | Port | Schema |
 |---|---|---|
@@ -15,9 +81,6 @@ stock or double-charging. The design is in
 | product-service | 8082 | `products_db` |
 | order-service | 8083 | `orders_db` |
 | payment-service | 8084 | `payments_db` |
-
-Each service connects as its own MySQL user that can only access its own schema, so
-cross-service joins are impossible rather than merely discouraged.
 
 ## Run locally
 
@@ -39,7 +102,7 @@ when the MySQL volume is first created, so after changing one run `docker compos
 (otherwise MySQL stays unhealthy and no service starts). A password must not contain `'`
 or `\`, and a literal `$` is written as `$$`.
 
-## API (so far)
+## API
 
 | Service | Endpoint | Notes |
 |---|---|---|
