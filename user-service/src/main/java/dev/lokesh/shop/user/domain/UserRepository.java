@@ -13,6 +13,8 @@ public interface UserRepository extends JpaRepository<User, Long> {
 
     Page<User> findByActiveTrue(Pageable pageable);
 
+    Optional<User> findByEmail(String email);
+
     /** Includes deleted users: their email stays taken (unique constraint). */
     boolean existsByEmail(String email);
 }

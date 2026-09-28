@@ -10,6 +10,8 @@ public enum ErrorCode {
 
     VALIDATION_FAILED(HttpStatus.BAD_REQUEST, "Validation failed"),
     PASSWORD_TOO_LONG(HttpStatus.BAD_REQUEST, "Password too long"),
+    INVALID_CREDENTIALS(HttpStatus.UNAUTHORIZED, "Invalid credentials"),
+    FORBIDDEN(HttpStatus.FORBIDDEN, "Forbidden"),
     USER_NOT_FOUND(HttpStatus.NOT_FOUND, "User not found"),
     EMAIL_TAKEN(HttpStatus.CONFLICT, "Email already registered");
 
