@@ -41,7 +41,7 @@ granted only its own schema, so a cross-service join is refused by the database 
 - [x] Integration tests on real MySQL (Testcontainers) + GitHub Actions CI
 - [x] Payments: simulated gateway, at most one payment per order (10 concurrent charges -> 1 row),
       and a demo switch that delays charge responses to reproduce timeouts
-- [ ] Checkout saga: idempotency keys, circuit breakers and timeouts (Resilience4j), and a
+- [x] Checkout saga: idempotency keys, circuit breakers and timeouts (Resilience4j), and a
       reconciler that settles orders after an outage
 - [ ] Measured query optimization (k6 + SQL counts)
 

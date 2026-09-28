@@ -96,6 +96,9 @@ services:
       DB_HOST: mysql
       DB_PORT: 3306
       DB_PASSWORD: ${ORDER_SVC_DB_PASSWORD:-order_svc_dev_pw}
+      USER_SERVICE_URL: http://user-service:8081
+      PRODUCT_SERVICE_URL: http://product-service:8082
+      PAYMENT_SERVICE_URL: http://payment-service:8084
     ports:
       - "127.0.0.1:8083:8083"
     healthcheck:
