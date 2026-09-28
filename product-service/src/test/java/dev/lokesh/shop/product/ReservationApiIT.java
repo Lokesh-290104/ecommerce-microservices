@@ -218,9 +218,18 @@ class ReservationApiIT extends MySqlTestSupport {
         }
 
         // For each order, a reserve and a release (the reconciler timing it out) arrive together.
-        race(20, i -> () -> i % 2 == 0
+        List<Object> results = race(20, i -> () -> i % 2 == 0
                 ? reservations.reserve(orders.get(i / 2), List.of(new ReserveItem(product, 3)))
                 : reservations.release(orders.get(i / 2)));
+
+        // Every release must succeed; a reserve may only lose to the release (RESERVATION_RELEASED).
+        for (int i = 0; i < results.size(); i++) {
+            Object r = results.get(i);
+            boolean expectedLoss = i % 2 == 0 && r instanceof ApiException e && e.code() == ErrorCode.RESERVATION_RELEASED;
+            assertThat(r instanceof Throwable && !expectedLoss)
+                    .as("call %d (%s) failed: %s", i, i % 2 == 0 ? "reserve" : "release", r)
+                    .isFalse();
+        }
 
         for (long order : orders) {
             assertThat(jdbc.queryForObject("SELECT status FROM reservations WHERE order_id = ?", String.class, order))

@@ -13,6 +13,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.SortedMap;
 import java.util.TreeMap;
+import java.util.concurrent.ThreadLocalRandom;
 import java.util.function.Supplier;
 import java.util.stream.Collectors;
 
@@ -24,7 +25,7 @@ import java.util.stream.Collectors;
 @Service
 public class ReservationService {
 
-    static final int MAX_LOCK_RETRIES = 3;
+    static final int MAX_LOCK_RETRIES = 5;
 
     private final ReservationStore store;
 
@@ -106,7 +107,23 @@ public class ReservationService {
                 if (attempt == MAX_LOCK_RETRIES) {
                     throw e;
                 }
+                backOff(attempt);
             }
+        }
+    }
+
+    /**
+     * Retrying a deadlock victim immediately tends to recreate the same collision (both sides
+     * come back at once), which is what exhausted the retries under CI load. A short, growing,
+     * randomised pause lets the other transaction finish first.
+     */
+    private static void backOff(int attempt) {
+        long maxMillis = 10L << attempt; // 20, 40, 80, 160 ms
+        try {
+            Thread.sleep(ThreadLocalRandom.current().nextLong(maxMillis / 2, maxMillis + 1));
+        } catch (InterruptedException interrupted) {
+            Thread.currentThread().interrupt();
+            throw new IllegalStateException("Interrupted while retrying a lock conflict", interrupted);
         }
     }
 }
