@@ -110,6 +110,9 @@ services:
       DB_HOST: mysql
       DB_PORT: 3306
       DB_PASSWORD: ${PAYMENT_SVC_DB_PASSWORD:-payment_svc_dev_pw}
+      # Demo switch (design D16): hold every charge response back this long AFTER committing it,
+      # e.g. PAYMENT_RESPONSE_DELAY_MS=3000 docker compose up -d, to show a timed-out charge.
+      PAYMENT_RESPONSE_DELAY_MS: ${PAYMENT_RESPONSE_DELAY_MS:-0}
     ports:
       - "127.0.0.1:8084:8084"
     healthcheck:
