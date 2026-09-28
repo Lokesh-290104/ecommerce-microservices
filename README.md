@@ -43,7 +43,7 @@ granted only its own schema, so a cross-service join is refused by the database 
       and a demo switch that delays charge responses to reproduce timeouts
 - [x] Checkout saga: idempotency keys, circuit breakers and timeouts (Resilience4j), and a
       reconciler that settles orders after an outage
-- [ ] Measured query optimization (k6 + SQL counts)
+- [x] Measured query optimization: 43 -> 4 SQL statements per page, p95 halved (see Benchmarks)
 
 The full design, with the reasoning behind every decision (D10-D27), is in
 [docs/designs/resilient-checkout-microservices.md](docs/designs/resilient-checkout-microservices.md).
@@ -94,6 +94,39 @@ enforced by a unique key), calls go through timeouts, retries and circuit breake
 (Resilience4j), and a reconciler runs every 15 s: it asks payment-service what happened to each
 pending order and marks it `PAID` (committing the stock) or `PAYMENT_FAILED` (releasing it),
 re-sending the charge only if payments never received it.
+
+## Benchmarks: fixing N+1 in the listing endpoints
+
+The two listing endpoints were first written the straightforward way (tag `bench-before`):
+each row's images, stock, order lines and history were loaded one row at a time, the classic
+N+1 problem. Then two fixes were measured against it, and each endpoint kept its winner
+(tag `bench-after`).
+
+| Endpoint (page of 20) | Version | SQL / request | p50 | p95 | Throughput |
+|---|---|---|---|---|---|
+| `GET /api/products?categoryId` | v1 baseline | 43.0 | 41.0 ms | 66.7 ms | 424 req/s |
+| | A: `@BatchSize` + index + batched stock | 5.0 | 23.5 ms | 51.5 ms | 682 req/s |
+| | **B: two-step ID paging + index** (kept) | **4.0** | **18.2 ms** | **31.9 ms** | **945 req/s** |
+| `GET /api/orders` (own) | v1 baseline | 34.6 | 39.4 ms | 70.5 ms | 435 req/s |
+| | **A: `@BatchSize` + index** (kept) | **3.6** | **16.8 ms** | **33.3 ms** | **965 req/s** |
+| | B: two-step ID paging + index | 3.6 | 23.1 ms | 44.9 ms | 719 req/s |
+
+**Result:** SQL statements per page 43 -> 4 (products) and 34.6 -> 3.6 (orders); p95 latency
+66.7 -> 31.9 ms and 70.5 -> 33.3 ms (both about 52% lower); throughput about 2.2x on both.
+
+Why the winners differ: products have one collection, so paging over ids (straight from the new
+`(category_id, id)` index) and then one `JOIN FETCH` is cheapest. Orders have two collections
+(lines and history), so two-step needs two fetch queries and the lines join multiplies rows,
+while `@BatchSize` loads each collection for the whole page in one light query.
+`JOIN FETCH` of a collection is never combined with `Pageable` (Hibernate would page in memory,
+HHH90003004), which is why ids are paged first.
+
+**Protocol** (`scripts/bench.sh <variant>`, results in [`benchmarks/results/`](benchmarks/results/)):
+fresh database per variant, deterministic seed (`Random(42)`: 1,000 users, 10,000 products x 5
+images, 50,000 orders), SQL counted per request by a Hibernate `StatementInspector`
+(`X-SQL-Count`, bench profile only), k6 with 20 virtual users: 30 s warm-up, then 3 runs of
+2 minutes per endpoint, median reported. Measured on one laptop (4 JVMs + MySQL in WSL), so
+compare the rows with each other rather than with other machines.
 
 ## Try it in 60 seconds
 

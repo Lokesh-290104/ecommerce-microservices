@@ -3,6 +3,16 @@
 All notable changes to this project are documented here. Versions use the
 `MAJOR.MINOR.PATCH.MICRO` format.
 
+## [0.8.0.0] - 2026-09-28
+
+### Changed
+- The product and order listings are about twice as fast: 43 -> 4 and 34.6 -> 3.6 SQL
+  statements per page, p95 latency down about 52%, throughput about 2.2x, measured with k6.
+
+### Added
+- Reproducible benchmarks: deterministic seed data, a per-request SQL counter, a k6 load test
+  and `scripts/bench.sh`, with every run's results committed under `benchmarks/results/`.
+
 ## [0.7.0.0] - 2026-09-28
 
 ### Added
