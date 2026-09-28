@@ -1,0 +1,118 @@
+# One MySQL container with one schema per service, plus the four services.
+# The images copy prebuilt jars, so build first with scripts/build.sh (./mvnw package,
+# then docker compose build). Then, from WSL:  docker compose up -d --wait
+# Every published port binds to 127.0.0.1 only. Passwords default to local dev values;
+# override them in a .env file (see .env.example).
+name: shop
+
+# Merged into each service's environment. YAML << merges are shallow, so a service that
+# declares environment: must start it with <<: *service-env (RepoWiringTests checks this).
+# 60% of 512m leaves ~200m for metaspace, threads and buffers outside the heap.
+x-service-env: &service-env
+  JAVA_TOOL_OPTIONS: -XX:MaxRAMPercentage=60
+
+x-service: &service
+  restart: unless-stopped
+  # Four JVMs share one WSL VM: cap each container so the container-aware JVM sizes
+  # its heap from 512m instead of from the whole VM.
+  mem_limit: 512m
+  depends_on:
+    mysql:
+      condition: service_healthy
+
+x-health: &health
+  interval: 10s
+  timeout: 3s
+  retries: 5
+  start_period: 60s
+
+services:
+  mysql:
+    image: mysql:8.4
+    # Services restart on their own; without this MySQL would stay down after a
+    # WSL/daemon restart and every service health check would report db DOWN.
+    restart: unless-stopped
+    environment:
+      MYSQL_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD:-root_dev_pw}
+      # root only via the container's own socket; services and the host port get their
+      # own schema-scoped users, never root (the default would be root@'%').
+      MYSQL_ROOT_HOST: localhost
+      USER_SVC_DB_PASSWORD: ${USER_SVC_DB_PASSWORD:-user_svc_dev_pw}
+      PRODUCT_SVC_DB_PASSWORD: ${PRODUCT_SVC_DB_PASSWORD:-product_svc_dev_pw}
+      ORDER_SVC_DB_PASSWORD: ${ORDER_SVC_DB_PASSWORD:-order_svc_dev_pw}
+      PAYMENT_SVC_DB_PASSWORD: ${PAYMENT_SVC_DB_PASSWORD:-payment_svc_dev_pw}
+    ports:
+      - "127.0.0.1:${MYSQL_HOST_PORT:-3307}:3306"
+    volumes:
+      - mysql-data:/var/lib/mysql
+      - ./docker/mysql/init:/docker-entrypoint-initdb.d:ro
+    healthcheck:
+      # Log in over TCP as the last user the init script creates. Init runs with
+      # networking off, and a failed init leaves this user missing, so healthy means
+      # "init finished". (mysqladmin ping would pass even on access denied.)
+      # Stuck unhealthy after editing a password in .env? The volume still has the old
+      # one: docker compose down -v
+      test: ["CMD-SHELL", "mysql -h 127.0.0.1 -upayment_svc -p\"$$PAYMENT_SVC_DB_PASSWORD\" -e 'SELECT 1' payments_db"]
+      interval: 5s
+      timeout: 3s
+      retries: 30
+      start_period: 120s   # a cold first init on WSL can be slow
+
+  user-service:
+    <<: *service
+    build: ./user-service
+    environment:
+      <<: *service-env
+      DB_HOST: mysql
+      DB_PORT: 3306
+      DB_PASSWORD: ${USER_SVC_DB_PASSWORD:-user_svc_dev_pw}
+    ports:
+      - "127.0.0.1:8081:8081"
+    healthcheck:
+      <<: *health
+      test: ["CMD", "curl", "-fsS", "http://localhost:8081/actuator/health"]
+
+  product-service:
+    <<: *service
+    build: ./product-service
+    environment:
+      <<: *service-env
+      DB_HOST: mysql
+      DB_PORT: 3306
+      DB_PASSWORD: ${PRODUCT_SVC_DB_PASSWORD:-product_svc_dev_pw}
+    ports:
+      - "127.0.0.1:8082:8082"
+    healthcheck:
+      <<: *health
+      test: ["CMD", "curl", "-fsS", "http://localhost:8082/actuator/health"]
+
+  order-service:
+    <<: *service
+    build: ./order-service
+    environment:
+      <<: *service-env
+      DB_HOST: mysql
+      DB_PORT: 3306
+      DB_PASSWORD: ${ORDER_SVC_DB_PASSWORD:-order_svc_dev_pw}
+    ports:
+      - "127.0.0.1:8083:8083"
+    healthcheck:
+      <<: *health
+      test: ["CMD", "curl", "-fsS", "http://localhost:8083/actuator/health"]
+
+  payment-service:
+    <<: *service
+    build: ./payment-service
+    environment:
+      <<: *service-env
+      DB_HOST: mysql
+      DB_PORT: 3306
+      DB_PASSWORD: ${PAYMENT_SVC_DB_PASSWORD:-payment_svc_dev_pw}
+    ports:
+      - "127.0.0.1:8084:8084"
+    healthcheck:
+      <<: *health
+      test: ["CMD", "curl", "-fsS", "http://localhost:8084/actuator/health"]
+
+volumes:
+  mysql-data:

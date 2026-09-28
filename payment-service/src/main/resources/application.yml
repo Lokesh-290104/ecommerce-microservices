@@ -1,0 +1,17 @@
+server:
+  port: 8084
+
+spring:
+  application:
+    name: payment-service
+  # Defaults target the compose MySQL published on localhost:3307 (see docker-compose.yml).
+  # Inside compose, DB_HOST/DB_PORT/DB_PASSWORD are set by the environment.
+  datasource:
+    url: jdbc:mysql://${DB_HOST:localhost}:${DB_PORT:3307}/payments_db
+    username: ${DB_USER:payment_svc}
+    password: ${DB_PASSWORD:payment_svc_dev_pw}
+
+management:
+  endpoint:
+    health:
+      show-components: always

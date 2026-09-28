@@ -1,0 +1,3 @@
+# Build context = the prebuilt jar only (Dockerfile COPYs target/<artifactId>.jar).
+*
+!target/*.jar
