@@ -25,10 +25,60 @@ spring:
         max-page-size: 100
 
 shop:
+  # Where the other services live. Compose overrides these with the service names.
+  services:
+    user-url: ${USER_SERVICE_URL:http://localhost:8081}
+    product-url: ${PRODUCT_SERVICE_URL:http://localhost:8082}
+    payment-url: ${PAYMENT_SERVICE_URL:http://localhost:8084}
   jwt:
     # HS256 key shared by all services (design D23). No default here: a service without
     # JWT_SECRET (at least 32 bytes) refuses to start. Compose supplies a local dev value.
     secret: ${JWT_SECRET:}
+
+# Per-downstream resilience (design: Resilience table). Timeouts are the HTTP client's
+# connect/read timeouts (see DownstreamClientsConfig), not Resilience4j's async-only TimeLimiter.
+# "Unavailable" = I/O error, timeout or 5xx. A 4xx is an answer: never recorded, never retried.
+resilience4j:
+  circuitbreaker:
+    configs:
+      default:
+        sliding-window-type: COUNT_BASED
+        sliding-window-size: 10
+        minimum-number-of-calls: 5
+        failure-rate-threshold: 50
+        wait-duration-in-open-state: 20s
+        permitted-number-of-calls-in-half-open-state: 3
+        record-exceptions:
+          - org.springframework.web.client.ResourceAccessException
+          - org.springframework.web.client.HttpServerErrorException
+        ignore-exceptions:
+          - org.springframework.web.client.HttpClientErrorException
+    instances:
+      userCB:
+        base-config: default
+      inventoryCB:
+        base-config: default
+      paymentCB:
+        base-config: default
+  retry:
+    configs:
+      default:
+        retry-exceptions:
+          - org.springframework.web.client.ResourceAccessException
+          - org.springframework.web.client.HttpServerErrorException
+        # An open breaker means "don't call"; retrying it would only spin.
+        ignore-exceptions:
+          - org.springframework.web.client.HttpClientErrorException
+          - io.github.resilience4j.circuitbreaker.CallNotPermittedException
+    instances:
+      userRetry:
+        base-config: default
+        max-attempts: 2        # 1 retry
+        wait-duration: 100ms
+      paymentRetry:
+        base-config: default
+        max-attempts: 3        # 2 retries; safe because charging is idempotent per order
+        wait-duration: 200ms
 
 management:
   endpoint:
