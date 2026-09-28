@@ -36,8 +36,9 @@ granted only its own schema, so a cross-service join is refused by the database 
 - [x] Catalog API: products with separate inventory rows, optimistic locking (409 on stale edits)
 - [x] Flyway migrations, RFC 7807 problem responses, request validation
 - [x] JWT authentication (HS256): login, per-user ownership checks, service-only endpoints, short-lived service tokens
+- [x] Inventory reservations: all-or-nothing, idempotent reserve / commit / release,
+      tested with real concurrent races (20 buyers, last 5 units: exactly 5 succeed)
 - [x] Integration tests on real MySQL (Testcontainers) + GitHub Actions CI
-- [ ] Inventory reservations (atomic, idempotent, concurrency-tested)
 - [ ] Payments with one-payment-per-order idempotency
 - [ ] Checkout saga: idempotency keys, circuit breakers and timeouts (Resilience4j), and a
       reconciler that settles orders after an outage
@@ -122,6 +123,16 @@ or `\`, and a literal `$` is written as `$$`.
 | product | `GET /api/products/{id}` | public | `available = on_hand - reserved` |
 | product | `GET /api/products?categoryId&page&size` | public | Paged, sorted by id |
 | product | `PUT /api/products/{id}` | user | Catalog fields only; send the `version` you read, stale -> 409 |
+| product | `POST /api/inventory/reservations` | internal | `{orderId, items}`: all items or none; returns unit prices; a retry replays the result |
+| product | `POST /api/inventory/reservations/{orderId}/commit` | internal | Paid: stock leaves (`on_hand` and `reserved` both drop); idempotent |
+| product | `DELETE /api/inventory/reservations/{orderId}` | internal | Release: stock returns; before any reserve it leaves a tombstone that blocks a late reserve |
+
+**Stock reservations** are plain SQL, one conditional `UPDATE ... WHERE on_hand - reserved >= q`
+per item, so the database itself refuses to oversell. The order id is the reservation's primary
+key, which makes every call idempotent: a retried reserve replays the stored result (with the
+prices captured the first time), a changed one gets 409. Items are updated in product-id order,
+so two orders sharing products can't deadlock, and lock-timeout losers are retried because every
+operation is safe to repeat. Tests race 20 real threads against MySQL for the last 5 units.
 
 **Security:** every service is a stateless OAuth2 resource server that verifies HS256 tokens
 with a shared `JWT_SECRET` (at least 32 bytes; a service without it refuses to start).
