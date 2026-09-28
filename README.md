@@ -65,6 +65,36 @@ The full design, with the reasoning behind every decision (D10-D27), is in
   as Compose; config tests pin ports, jar names and passwords across Compose, Dockerfiles and
   application config so they cannot drift.
 
+## Headline demo: payments goes down mid-checkout
+
+```bash
+scripts/build.sh && docker compose up -d --wait
+scripts/demo-outage.sh     # with Docker in WSL, run it inside WSL so the VM stays up
+```
+
+What it shows (real output from the local stack):
+
+```
+== 1. Normal checkout
+HTTP 201, status PAID
+== 2. Stop payment-service and check out again
+HTTP 202, order 4 status PAYMENT_PENDING (stock held: available 6)
+message: We're confirming your payment; this order will update on its own.
+== 3. Start payment-service; the reconciler settles the order by itself
+  after 0s: PAYMENT_PENDING
+  ...
+  after 43s: PAID
+available now: 6 (10 - 2 - 2: both orders' stock committed, none leaked)
+PASS: checkout survived the outage and settled to PAID without a second charge.
+```
+
+How it works: checkout commits the order as `PAYMENT_PENDING` *before* charging, so an outage
+leaves a state that can be finished later. Charges are idempotent per order (one payment row,
+enforced by a unique key), calls go through timeouts, retries and circuit breakers
+(Resilience4j), and a reconciler runs every 15 s: it asks payment-service what happened to each
+pending order and marks it `PAID` (committing the stock) or `PAYMENT_FAILED` (releasing it),
+re-sending the charge only if payments never received it.
+
 ## Try it in 60 seconds
 
 ```bash
