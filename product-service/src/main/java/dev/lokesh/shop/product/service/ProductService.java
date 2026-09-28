@@ -18,6 +18,8 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.util.List;
+import java.util.Map;
+import java.util.stream.Collectors;
 
 @Service
 public class ProductService {
@@ -47,16 +49,25 @@ public class ProductService {
     }
 
     /**
-     * v1 listing, written the straightforward way on purpose (design D26): each product's
-     * category, images and stock are loaded one product at a time while mapping, so a page of
-     * 20 costs dozens of queries. Step 8 measures this baseline, then fixes it in separate commits.
+     * Listing (step 8, two-step): page over ids only (served by the index), then load exactly
+     * those products with category and images in one query, and their stock in one more.
+     * The v1 version loaded images and stock per product (43 SQL statements for a page of 20);
+     * see benchmarks/ for the measurements.
      */
     @Transactional(readOnly = true)
     public Page<ProductResponse> list(Long categoryId, Pageable pageable) {
-        Page<Product> page = categoryId == null
-                ? products.findAll(pageable)
-                : products.findByCategoryId(categoryId, pageable);
-        return page.map(this::toResponse);
+        Page<Long> ids = categoryId == null
+                ? products.findAllIds(pageable)
+                : products.findIdsByCategoryId(categoryId, pageable);
+        Map<Long, Product> byId = products.findWithImagesByIdIn(ids.getContent()).stream()
+                .collect(Collectors.toMap(Product::getId, p -> p));
+        Map<Long, Integer> available = availability(ids.getContent());
+        return ids.map(id -> toResponse(byId.get(id), available.getOrDefault(id, 0))); // keeps the page's order
+    }
+
+    private Map<Long, Integer> availability(List<Long> productIds) {
+        return inventory.findAllById(productIds).stream()
+                .collect(Collectors.toMap(Inventory::getProductId, Inventory::available));
     }
 
     @Transactional
@@ -84,7 +95,10 @@ public class ProductService {
     }
 
     private ProductResponse toResponse(Product product) {
-        int available = inventory.findById(product.getId()).map(Inventory::available).orElse(0);
+        return toResponse(product, inventory.findById(product.getId()).map(Inventory::available).orElse(0));
+    }
+
+    private ProductResponse toResponse(Product product, int available) {
         return new ProductResponse(
                 product.getId(),
                 product.getCategory().getId(),

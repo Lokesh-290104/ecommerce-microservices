@@ -32,6 +32,10 @@ public class Inventory {
         this.onHand = onHand;
     }
 
+    public Long getProductId() {
+        return productId;
+    }
+
     public int available() {
         return onHand - reserved;
     }

@@ -1,5 +1,6 @@
 package dev.lokesh.shop.product.security;
 
+import org.springframework.boot.autoconfigure.condition.ConditionalOnWebApplication;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.http.HttpMethod;
@@ -15,6 +16,7 @@ import org.springframework.security.web.SecurityFilterChain;
  * user, and inventory (reserve / commit / release, step 5) is for internal service tokens only.
  */
 @Configuration
+@ConditionalOnWebApplication // not in one-off runs without a web server (e.g. the seed profile)
 public class SecurityConfig {
 
     @Bean

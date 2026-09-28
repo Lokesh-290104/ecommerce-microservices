@@ -1,0 +1,12 @@
+# One-off seeding for benchmarks (step 8): docker compose run --rm -e SPRING_PROFILES_ACTIVE=seed order-service
+# Runs the seeder, then exits (no web server). Batched inserts are rewritten into multi-row INSERTs.
+spring:
+  main:
+    web-application-type: none
+  datasource:
+    hikari:
+      data-source-properties:
+        rewriteBatchedStatements: true
+shop:
+  reconciler:
+    enabled: false
