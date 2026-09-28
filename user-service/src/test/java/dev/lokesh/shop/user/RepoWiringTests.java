@@ -127,6 +127,19 @@ class RepoWiringTests {
         assertTrue(cmd.endsWith(" " + svc + "s_db"), cmd);
     }
 
+    @ParameterizedTest(name = "{0}")
+    @CsvSource({"user-service", "product-service", "order-service", "payment-service"})
+    void everyServiceGetsTheSameJwtSecretAndHasNoDefaultOfItsOwn(String service) throws IOException {
+        Map<String, Object> env = get(compose, "services", service, "environment");
+        String composeSecret = defaultOf((String) env.get("JWT_SECRET"), "JWT_SECRET");
+        assertTrue(composeSecret.getBytes(java.nio.charset.StandardCharsets.UTF_8).length >= 32, "HS256 needs 32+ bytes");
+        assertTrue(Pattern.compile("(?m)^JWT_SECRET=" + Pattern.quote(composeSecret) + "\\r?$")
+                .matcher(Files.readString(ROOT.resolve(".env.example"))).find(), ".env.example JWT_SECRET");
+        // No fallback in the app itself: outside compose, a missing JWT_SECRET must stop startup.
+        Map<String, Object> appYml = yaml(ROOT.resolve(service).resolve("src/main/resources/application.yml"));
+        assertEquals("${JWT_SECRET:}", get(appYml, "shop", "jwt", "secret"));
+    }
+
     @Test
     void mysqlRootIsNotReachableFromTheNetwork() {
         // The dev root password is public; without this the image creates root@'%'.
