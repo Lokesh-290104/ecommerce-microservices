@@ -11,6 +11,19 @@ spring:
     username: ${DB_USER:product_svc}
     password: ${DB_PASSWORD:product_svc_dev_pw}
 
+  # Flyway owns the schema (src/main/resources/db/migration); Hibernate only checks it matches.
+  jpa:
+    open-in-view: false
+    hibernate:
+      ddl-auto: validate
+  mvc:
+    problemdetails:
+      enabled: true
+  data:
+    web:
+      pageable:
+        max-page-size: 100
+
 management:
   endpoint:
     health:

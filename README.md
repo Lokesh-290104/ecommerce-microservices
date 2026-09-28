@@ -39,6 +39,24 @@ when the MySQL volume is first created, so after changing one run `docker compos
 (otherwise MySQL stays unhealthy and no service starts). A password must not contain `'`
 or `\`, and a literal `$` is written as `$$`.
 
+## API (so far)
+
+| Service | Endpoint | Notes |
+|---|---|---|
+| user | `POST /api/users` | Register; password stored as a BCrypt hash; duplicate email (any case) -> 409 |
+| user | `GET /api/users/{id}` | 404 ProblemDetail if missing or deleted |
+| user | `GET /api/users?page&size` | Paged, sorted by id, size <= 100 |
+| user | `PUT /api/users/{id}` | Change email and name |
+| user | `DELETE /api/users/{id}` | Soft delete (`active=false`); the email stays taken |
+| product | `POST /api/products` | Creates the product and its inventory row in one transaction |
+| product | `GET /api/products/{id}` | `available = on_hand - reserved` |
+| product | `GET /api/products?categoryId&page&size` | Paged, sorted by id |
+| product | `PUT /api/products/{id}` | Catalog fields only; send the `version` you read, stale -> 409 |
+
+Errors are RFC 7807 `application/problem+json` bodies with a machine-readable `code`
+(e.g. `EMAIL_TAKEN`, `VERSION_CONFLICT`) and, for validation, a per-field `errors` list.
+Schemas are created by Flyway migrations; Hibernate only validates them.
+
 ## Tests
 
 `./mvnw verify` runs the unit tests (offline) and then the `*IT` integration tests, which
