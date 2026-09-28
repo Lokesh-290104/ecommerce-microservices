@@ -88,7 +88,7 @@ public class UserService {
     }
 
     /** Emails are unique case-insensitively: stored trimmed and lower-cased. */
-    private static String normalize(String email) {
+    static String normalize(String email) {
         return email.strip().toLowerCase(Locale.ROOT);
     }
 }

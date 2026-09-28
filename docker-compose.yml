@@ -10,6 +10,8 @@ name: shop
 # 60% of 512m leaves ~200m for metaspace, threads and buffers outside the heap.
 x-service-env: &service-env
   JAVA_TOOL_OPTIONS: -XX:MaxRAMPercentage=60
+  # One HS256 key for every service (design D23): user-service signs, all of them verify.
+  JWT_SECRET: ${JWT_SECRET:-local-dev-jwt-secret-change-me-0123456789}
 
 x-service: &service
   restart: unless-stopped
