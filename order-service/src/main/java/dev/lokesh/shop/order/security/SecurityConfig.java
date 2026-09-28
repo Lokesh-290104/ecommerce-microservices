@@ -1,5 +1,6 @@
 package dev.lokesh.shop.order.security;
 
+import org.springframework.boot.autoconfigure.condition.ConditionalOnWebApplication;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.security.config.Customizer;
@@ -14,6 +15,7 @@ import org.springframework.security.web.SecurityFilterChain;
  * (you only see your own orders) is checked per request in the order API.
  */
 @Configuration
+@ConditionalOnWebApplication // not in one-off runs without a web server (e.g. the seed profile)
 public class SecurityConfig {
 
     @Bean

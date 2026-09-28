@@ -1,0 +1,9 @@
+# Benchmark overlay (step 8): docker compose -f docker-compose.yml -f docker-compose.bench.yml ...
+# Turns on the "bench" profile, which adds an X-SQL-Count header (statements per request).
+services:
+  product-service:
+    environment:
+      SPRING_PROFILES_ACTIVE: bench
+  order-service:
+    environment:
+      SPRING_PROFILES_ACTIVE: bench

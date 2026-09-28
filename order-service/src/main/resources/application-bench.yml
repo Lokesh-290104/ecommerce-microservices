@@ -1,0 +1,7 @@
+# Benchmark profile (step 8): count SQL statements per request (X-SQL-Count header).
+spring:
+  jpa:
+    properties:
+      hibernate:
+        session_factory:
+          statement_inspector: dev.lokesh.shop.order.bench.SqlCounter
