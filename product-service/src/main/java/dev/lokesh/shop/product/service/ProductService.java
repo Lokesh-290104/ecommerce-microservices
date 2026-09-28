@@ -49,17 +49,20 @@ public class ProductService {
     }
 
     /**
-     * Listing (step 8): the page, then stock for the whole page in one query; images load in one
-     * batch (@BatchSize on Product.images). The v1 version loaded both per product (43 SQL
-     * statements for a page of 20); see benchmarks/ for the measurements.
+     * Listing (step 8, two-step): page over ids only (served by the index), then load exactly
+     * those products with category and images in one query, and their stock in one more.
+     * The v1 version loaded images and stock per product (43 SQL statements for a page of 20);
+     * see benchmarks/ for the measurements.
      */
     @Transactional(readOnly = true)
     public Page<ProductResponse> list(Long categoryId, Pageable pageable) {
-        Page<Product> page = categoryId == null
-                ? products.findAll(pageable)
-                : products.findByCategoryId(categoryId, pageable);
-        Map<Long, Integer> available = availability(page.getContent().stream().map(Product::getId).toList());
-        return page.map(p -> toResponse(p, available.getOrDefault(p.getId(), 0)));
+        Page<Long> ids = categoryId == null
+                ? products.findAllIds(pageable)
+                : products.findIdsByCategoryId(categoryId, pageable);
+        Map<Long, Product> byId = products.findWithImagesByIdIn(ids.getContent()).stream()
+                .collect(Collectors.toMap(Product::getId, p -> p));
+        Map<Long, Integer> available = availability(ids.getContent());
+        return ids.map(id -> toResponse(byId.get(id), available.getOrDefault(id, 0))); // keeps the page's order
     }
 
     private Map<Long, Integer> availability(List<Long> productIds) {

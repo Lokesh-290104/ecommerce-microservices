@@ -15,7 +15,6 @@ import jakarta.persistence.OneToMany;
 import jakarta.persistence.OrderBy;
 import jakarta.persistence.Table;
 import jakarta.persistence.Version;
-import org.hibernate.annotations.BatchSize;
 
 import java.math.BigDecimal;
 import java.time.Instant;
@@ -82,12 +81,10 @@ public class Order {
     @ElementCollection
     @CollectionTable(name = "order_items", joinColumns = @JoinColumn(name = "order_id"))
     @OrderBy("productId")
-    @BatchSize(size = 20) // step 8: lines for a whole page of orders in one query
     private List<OrderLine> lines = new ArrayList<>();
 
     @OneToMany(mappedBy = "order", cascade = CascadeType.ALL)
     @OrderBy("id")
-    @BatchSize(size = 20) // step 8: history for a whole page of orders in one query
     private List<StatusChange> history = new ArrayList<>();
 
     protected Order() {

@@ -18,6 +18,7 @@ import java.time.temporal.ChronoUnit;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+import java.util.stream.Collectors;
 
 /**
  * Every write to an order, each as one short transaction (design D18). This bean never calls
@@ -106,12 +107,17 @@ public class OrderStateService {
     }
 
     /**
-     * The caller's orders (step 8): lines and history load in one batch each for the whole page
-     * (@BatchSize on Order), instead of one query per order as in v1; see benchmarks/.
+     * The caller's orders (step 8, two-step): page over ids only, then load those orders with
+     * their lines in one query and their history in one more (same persistence context), instead
+     * of one query per order and collection as in v1; see benchmarks/.
      */
     @Transactional(readOnly = true)
     public Page<OrderView> listForUser(long userId, Pageable pageable) {
-        return orders.findByUserId(userId, pageable).map(OrderView::of);
+        Page<Long> ids = orders.findIdsByUserId(userId, pageable);
+        Map<Long, Order> byId = orders.findWithLinesByIdIn(ids.getContent()).stream()
+                .collect(Collectors.toMap(Order::getId, o -> o));
+        orders.findWithHistoryByIdIn(ids.getContent()); // fills history on the same managed orders
+        return ids.map(id -> OrderView.of(byId.get(id))); // keeps the page's order
     }
 
     // --- reconciler scans ---

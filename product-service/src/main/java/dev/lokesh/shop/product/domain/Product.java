@@ -14,7 +14,6 @@ import jakarta.persistence.OrderBy;
 import jakarta.persistence.PrePersist;
 import jakarta.persistence.Table;
 import jakarta.persistence.Version;
-import org.hibernate.annotations.BatchSize;
 
 import java.math.BigDecimal;
 import java.time.Instant;
@@ -50,8 +49,6 @@ public class Product {
 
     @OneToMany(mappedBy = "product", cascade = CascadeType.ALL, orphanRemoval = true)
     @OrderBy("position")
-    // Step 8: images for a whole page of products load in one query, not one per product.
-    @BatchSize(size = 20)
     private List<ProductImage> images = new ArrayList<>();
 
     @Column(name = "created_at", nullable = false, updatable = false)
