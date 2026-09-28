@@ -11,7 +11,20 @@ spring:
     username: ${DB_USER:payment_svc}
     password: ${DB_PASSWORD:payment_svc_dev_pw}
 
+  # Flyway owns the schema (src/main/resources/db/migration); Hibernate only checks it matches.
+  jpa:
+    open-in-view: false
+    hibernate:
+      ddl-auto: validate
+  mvc:
+    problemdetails:
+      enabled: true
+
 shop:
+  payments:
+    # Demo switch (design D16): delay every POST /api/payments response by this many ms, AFTER
+    # the payment is committed, to reproduce "the charge went through but the caller timed out".
+    response-delay-ms: ${PAYMENT_RESPONSE_DELAY_MS:0}
   jwt:
     # HS256 key shared by all services (design D23). No default here: a service without
     # JWT_SECRET (at least 32 bytes) refuses to start. Compose supplies a local dev value.

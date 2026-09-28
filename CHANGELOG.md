@@ -3,6 +3,16 @@
 All notable changes to this project are documented here. Versions use the
 `MAJOR.MINOR.PATCH.MICRO` format.
 
+## [0.6.0.0] - 2026-09-28
+
+### Added
+- Payment service (internal): charge an order, look a payment up by id or by order. A
+  simulated gateway declines the token `tok_decline` and approves anything else.
+- An order is charged at most once, even when several charges for it arrive at the same
+  moment; a retry gets the original payment back, and a different amount is refused.
+- A demo switch, `PAYMENT_RESPONSE_DELAY_MS`, that makes charges answer slowly after they
+  succeed, to show how checkout copes with a payment that timed out but went through.
+
 ## [0.5.0.0] - 2026-09-28
 
 ### Added
