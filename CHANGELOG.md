@@ -3,6 +3,17 @@
 All notable changes to this project are documented here. Versions use the
 `MAJOR.MINOR.PATCH.MICRO` format.
 
+## [0.3.0.0] - 2026-09-28
+
+### Added
+- Users API: register (BCrypt-hashed password, case-insensitive unique email), get, paged
+  list, update and soft delete.
+- Catalog API: create a product with its stock, get it with available stock, list by category
+  (paged), and update catalog fields with optimistic locking (a stale version gets 409).
+- Consistent errors: every failure is an RFC 7807 problem response with a `code`, and invalid
+  requests list each bad field.
+- Database schemas managed by Flyway migrations, checked by Hibernate at startup.
+
 ## [0.2.0.0] - 2026-09-28
 
 ### Added
