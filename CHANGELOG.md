@@ -3,6 +3,13 @@
 All notable changes to this project are documented here. Versions use the
 `MAJOR.MINOR.PATCH.MICRO` format.
 
+## [0.9.0.1] - 2026-09-28
+
+### Fixed
+- A stock release racing a reserve of the same order could give up after repeated database
+  deadlocks under heavy load, leaving stock held. Retries now back off with random jitter (up to
+  5 attempts), and the race test checks that every release succeeds.
+
 ## [0.9.0.0] - 2026-09-28
 
 ### Added
