@@ -31,5 +31,8 @@
 
     <properties>
         <java.version>21</java.version>
+        <!-- Not in the Spring Boot BOM yet, so pinned here (design premise 1). -->
+        <resilience4j.version>2.4.0</resilience4j.version>
+        <wiremock.version>3.13.2</wiremock.version>
     </properties>
 </project>
