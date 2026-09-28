@@ -3,6 +3,15 @@
 All notable changes to this project are documented here. Versions use the
 `MAJOR.MINOR.PATCH.MICRO` format.
 
+## [0.5.0.0] - 2026-09-28
+
+### Added
+- Stock reservations for checkout (internal): reserve an order's items all-or-nothing,
+  commit them when the order is paid, or release them when it fails. Stock can never be
+  oversold, even when many buyers race for the last units.
+- Every reservation call is safe to retry: a repeated reserve returns the original result
+  and prices, and a release that arrives before its reserve blocks that late reserve.
+
 ## [0.4.0.0] - 2026-09-28
 
 ### Added
