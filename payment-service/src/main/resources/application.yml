@@ -11,6 +11,12 @@ spring:
     username: ${DB_USER:payment_svc}
     password: ${DB_PASSWORD:payment_svc_dev_pw}
 
+shop:
+  jwt:
+    # HS256 key shared by all services (design D23). No default here: a service without
+    # JWT_SECRET (at least 32 bytes) refuses to start. Compose supplies a local dev value.
+    secret: ${JWT_SECRET:}
+
 management:
   endpoint:
     health:

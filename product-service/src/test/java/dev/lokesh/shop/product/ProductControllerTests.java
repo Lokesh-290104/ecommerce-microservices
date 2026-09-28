@@ -3,10 +3,15 @@ package dev.lokesh.shop.product;
 import dev.lokesh.shop.product.api.ProductController;
 import dev.lokesh.shop.product.error.ApiException;
 import dev.lokesh.shop.product.error.ErrorCode;
+import dev.lokesh.shop.product.security.JwtKeys;
+import dev.lokesh.shop.product.security.ProblemAuthHandlers;
+import dev.lokesh.shop.product.security.SecurityConfig;
 import dev.lokesh.shop.product.service.ProductService;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.webmvc.test.autoconfigure.WebMvcTest;
+import org.springframework.context.annotation.Import;
+import org.springframework.http.HttpHeaders;
 import org.springframework.http.MediaType;
 import org.springframework.orm.ObjectOptimisticLockingFailureException;
 import org.springframework.test.context.bean.override.mockito.MockitoBean;
@@ -25,8 +30,9 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
-/** Web layer only (no database): validation and the ProblemDetail error contract. */
+/** Web layer only (no database): validation, security rules and the ProblemDetail error contract. */
 @WebMvcTest(ProductController.class)
+@Import({SecurityConfig.class, JwtKeys.class, ProblemAuthHandlers.class})
 class ProductControllerTests {
 
     @Autowired
@@ -35,9 +41,25 @@ class ProductControllerTests {
     @MockitoBean
     ProductService productService;
 
+    private static final String USER = TestTokens.bearer(TestTokens.user(1));
+
+    @Test
+    void writesNeedATokenAndInventoryNeedsAServiceToken() throws Exception {
+        mvc.perform(post("/api/products").contentType(MediaType.APPLICATION_JSON).content("{}"))
+                .andExpect(status().isUnauthorized())
+                .andExpect(jsonPath("$.code").value("UNAUTHENTICATED"));
+        // Inventory endpoints (step 5) are internal: a user token is refused before any handler runs.
+        mvc.perform(post("/api/inventory/reservations").header(HttpHeaders.AUTHORIZATION, USER))
+                .andExpect(status().isForbidden())
+                .andExpect(jsonPath("$.code").value("FORBIDDEN"));
+        mvc.perform(post("/api/inventory/reservations"))
+                .andExpect(status().isUnauthorized());
+        verifyNoInteractions(productService);
+    }
+
     @Test
     void invalidProductListsEveryBadField() throws Exception {
-        mvc.perform(post("/api/products").contentType(MediaType.APPLICATION_JSON)
+        mvc.perform(post("/api/products").header(HttpHeaders.AUTHORIZATION, USER).contentType(MediaType.APPLICATION_JSON)
                         .content("{\"categoryId\":0,\"name\":\"\",\"price\":0,\"initialStock\":-1,"
                                 + "\"imageUrls\":[\"not a url\"]}"))
                 .andExpect(status().isBadRequest())
@@ -50,7 +72,7 @@ class ProductControllerTests {
 
     @Test
     void priceWithMoreThanTwoDecimalsIsRejected() throws Exception {
-        mvc.perform(post("/api/products").contentType(MediaType.APPLICATION_JSON)
+        mvc.perform(post("/api/products").header(HttpHeaders.AUTHORIZATION, USER).contentType(MediaType.APPLICATION_JSON)
                         .content("{\"categoryId\":1,\"name\":\"x\",\"price\":1.999,\"initialStock\":1}"))
                 .andExpect(status().isBadRequest())
                 .andExpect(jsonPath("$.errors[0].field").value("price"));
@@ -58,7 +80,7 @@ class ProductControllerTests {
 
     @Test
     void updateWithoutAVersionIsRejected() throws Exception {
-        mvc.perform(put("/api/products/1").contentType(MediaType.APPLICATION_JSON)
+        mvc.perform(put("/api/products/1").header(HttpHeaders.AUTHORIZATION, USER).contentType(MediaType.APPLICATION_JSON)
                         .content("{\"categoryId\":1,\"name\":\"x\",\"price\":1.00}"))
                 .andExpect(status().isBadRequest())
                 .andExpect(jsonPath("$.errors[0].field").value("version"));
@@ -74,7 +96,7 @@ class ProductControllerTests {
         mvc.perform(get("/api/products/1"))
                 .andExpect(status().isNotFound())
                 .andExpect(jsonPath("$.code").value("PRODUCT_NOT_FOUND"));
-        mvc.perform(put("/api/products/1").contentType(MediaType.APPLICATION_JSON)
+        mvc.perform(put("/api/products/1").header(HttpHeaders.AUTHORIZATION, USER).contentType(MediaType.APPLICATION_JSON)
                         .content("{\"categoryId\":1,\"name\":\"x\",\"price\":1.00,\"version\":0}"))
                 .andExpect(status().isConflict())
                 .andExpect(jsonPath("$.code").value("VERSION_CONFLICT"));
