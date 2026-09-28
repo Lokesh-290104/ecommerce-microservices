@@ -3,6 +3,20 @@
 All notable changes to this project are documented here. Versions use the
 `MAJOR.MINOR.PATCH.MICRO` format.
 
+## [0.4.0.0] - 2026-09-28
+
+### Added
+- Log in with email and password (`POST /api/auth/login`) to get a 30-minute bearer token.
+- Every service now checks tokens: signing in is required to change the catalog or to see
+  users, a user can only read, change or delete their own account, and payment and inventory
+  endpoints accept only internal service tokens.
+- order-service can mint 60-second internal service tokens for its calls to other services.
+- Clear 401/403 problem responses, and logins that don't reveal which emails are registered.
+
+### Changed
+- Every service needs `JWT_SECRET` (32+ bytes) and refuses to start without it; the compose
+  stack provides a local development value.
+
 ## [0.3.0.0] - 2026-09-28
 
 ### Added

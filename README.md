@@ -35,12 +35,12 @@ granted only its own schema, so a cross-service join is refused by the database 
 - [x] Users API: registration with BCrypt, unique email, paging, soft delete
 - [x] Catalog API: products with separate inventory rows, optimistic locking (409 on stale edits)
 - [x] Flyway migrations, RFC 7807 problem responses, request validation
+- [x] JWT authentication (HS256): login, per-user ownership checks, service-only endpoints, short-lived service tokens
 - [x] Integration tests on real MySQL (Testcontainers) + GitHub Actions CI
 - [ ] Inventory reservations (atomic, idempotent, concurrency-tested)
 - [ ] Payments with one-payment-per-order idempotency
 - [ ] Checkout saga: idempotency keys, circuit breakers and timeouts (Resilience4j), and a
       reconciler that settles orders after an outage
-- [ ] JWT authentication and service-to-service tokens
 - [ ] Measured query optimization (k6 + SQL counts)
 
 The full design, with the reasoning behind every decision (D10-D27), is in
@@ -68,11 +68,17 @@ The full design, with the reasoning behind every decision (D10-D27), is in
 ```bash
 scripts/build.sh && docker compose up -d --wait      # build jars + images, start everything
 
-curl -s -X POST localhost:8081/api/users -H 'Content-Type: application/json'   -d '{"email":"ada@example.com","password":"correct-horse","name":"Ada"}'
+curl -s -X POST localhost:8081/api/users -H 'Content-Type: application/json' \
+  -d '{"email":"ada@example.com","password":"correct-horse","name":"Ada"}'
 
-curl -s -X POST localhost:8082/api/products -H 'Content-Type: application/json'   -d '{"categoryId":1,"name":"Headphones","price":199.99,"initialStock":25}'
+TOKEN=$(curl -s -X POST localhost:8081/api/auth/login -H 'Content-Type: application/json' \
+  -d '{"email":"ada@example.com","password":"correct-horse"}' | sed 's/.*"accessToken":"\([^"]*\)".*/\1/')
 
-curl -s 'localhost:8082/api/products?categoryId=1&size=5'
+curl -s -X POST localhost:8082/api/products -H "Authorization: Bearer $TOKEN" \
+  -H 'Content-Type: application/json' \
+  -d '{"categoryId":1,"name":"Headphones","price":199.99,"initialStock":25}'
+
+curl -s 'localhost:8082/api/products?categoryId=1&size=5'   # browsing is public
 ```
 
 | Service | Port | Schema |
@@ -104,17 +110,25 @@ or `\`, and a literal `$` is written as `$$`.
 
 ## API
 
-| Service | Endpoint | Notes |
-|---|---|---|
-| user | `POST /api/users` | Register; password stored as a BCrypt hash; duplicate email (any case) -> 409 |
-| user | `GET /api/users/{id}` | 404 ProblemDetail if missing or deleted |
-| user | `GET /api/users?page&size` | Paged, sorted by id, size <= 100 |
-| user | `PUT /api/users/{id}` | Change email and name |
-| user | `DELETE /api/users/{id}` | Soft delete (`active=false`); the email stays taken |
-| product | `POST /api/products` | Creates the product and its inventory row in one transaction |
-| product | `GET /api/products/{id}` | `available = on_hand - reserved` |
-| product | `GET /api/products?categoryId&page&size` | Paged, sorted by id |
-| product | `PUT /api/products/{id}` | Catalog fields only; send the `version` you read, stale -> 409 |
+| Service | Endpoint | Auth | Notes |
+|---|---|---|---|
+| user | `POST /api/users` | public | Register; password stored as a BCrypt hash; duplicate email (any case) -> 409 |
+| user | `POST /api/auth/login` | public | Returns a 30-minute HS256 JWT; wrong password and unknown email get the same 401 |
+| user | `GET /api/users/{id}` | self / internal | 404 ProblemDetail if missing or deleted |
+| user | `GET /api/users?page&size` | user | Paged, sorted by id, size <= 100 |
+| user | `PUT /api/users/{id}` | self | Change email and name |
+| user | `DELETE /api/users/{id}` | self | Soft delete (`active=false`); the email stays taken |
+| product | `POST /api/products` | user | Creates the product and its inventory row in one transaction |
+| product | `GET /api/products/{id}` | public | `available = on_hand - reserved` |
+| product | `GET /api/products?categoryId&page&size` | public | Paged, sorted by id |
+| product | `PUT /api/products/{id}` | user | Catalog fields only; send the `version` you read, stale -> 409 |
+
+**Security:** every service is a stateless OAuth2 resource server that verifies HS256 tokens
+with a shared `JWT_SECRET` (at least 32 bytes; a service without it refuses to start).
+user-service issues user tokens (`scope=user`); order-service will mint 60-second service tokens
+(`scope=internal`) for its calls to products and payments, and a user token can never reach
+those internal endpoints (403). 401/403 responses are ProblemDetail bodies too. A shared secret
+keeps the setup simple; RS256 with a JWKS endpoint is the production next step (see TODOS.md).
 
 Errors are RFC 7807 `application/problem+json` bodies with a machine-readable `code`
 (e.g. `EMAIL_TAKEN`, `VERSION_CONFLICT`) and, for validation, a per-field `errors` list.
