@@ -3,6 +3,16 @@
 All notable changes to this project are documented here. Versions use the
 `MAJOR.MINOR.PATCH.MICRO` format.
 
+## [0.7.0.0] - 2026-09-28
+
+### Added
+- Checkout (`POST /api/orders` with an `Idempotency-Key`): reserves stock, charges, and returns
+  201 paid, 402 declined, 202 while payment is confirmed, or 409/422/503 with nothing charged.
+  Double submits create one order and one charge.
+- A reconciler that settles orders after an outage: pending orders become paid or failed once
+  payments answers, stuck orders are cancelled, and failed stock updates are retried.
+- `GET /api/orders/{id}` and `GET /api/orders` for your own orders.
+
 ## [0.6.0.0] - 2026-09-28
 
 ### Added
