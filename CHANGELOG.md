@@ -3,6 +3,16 @@
 All notable changes to this project are documented here. Versions use the
 `MAJOR.MINOR.PATCH.MICRO` format.
 
+## [0.2.0.0] - 2026-09-28
+
+### Added
+- Integration tests against a real MySQL 8.4 (Testcontainers), set up by the same init script
+  as the compose stack: the service's database health, per-service schema isolation, and root
+  locked to localhost are now checked automatically, not by hand.
+- Continuous integration: every push to `main` and every pull request builds and runs all
+  tests on GitHub Actions.
+- README instructions for running the integration tests on Windows with Docker in WSL.
+
 ## [0.1.0.0] - 2026-09-27
 
 ### Added

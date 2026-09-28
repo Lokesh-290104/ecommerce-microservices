@@ -39,6 +39,30 @@ when the MySQL volume is first created, so after changing one run `docker compos
 (otherwise MySQL stays unhealthy and no service starts). A password must not contain `'`
 or `\`, and a literal `$` is written as `$$`.
 
-Tests only: `./mvnw verify` (offline: no MySQL or Docker needed).
+## Tests
+
+`./mvnw verify` runs the unit tests (offline) and then the `*IT` integration tests, which
+start a real MySQL 8.4 with [Testcontainers](https://testcontainers.com/) using the same init
+script as compose. Without a reachable Docker daemon the integration tests are skipped, not
+failed. CI runs everything on every push and pull request.
+
+### Testcontainers on Windows with Docker in WSL
+
+The JVM runs on Windows but Docker lives in WSL, so the WSL daemon also listens on a TCP port
+bound to loopback only. In WSL:
+
+```bash
+sudo mkdir -p /etc/systemd/system/docker.service.d
+printf '[Service]\nExecStart=\nExecStart=/usr/bin/dockerd -H fd:// -H tcp://127.0.0.1:2375 --containerd=/run/containerd/containerd.sock\n' \
+  | sudo tee /etc/systemd/system/docker.service.d/override.conf
+sudo systemctl daemon-reload && sudo systemctl restart docker
+```
+
+Then on Windows: `setx DOCKER_HOST tcp://localhost:2375` and open a new terminal.
+
+> **Security:** this TCP socket has no authentication and is root-equivalent inside WSL.
+> It is bound to `127.0.0.1` only, so nothing outside your machine can reach it, but any
+> local process can. Never bind it to `0.0.0.0`. Keep WSL running during test runs (WSL
+> shuts an idle VM down; `vmIdleTimeout` in `.wslconfig` controls that).
 
 Release notes are in [CHANGELOG.md](CHANGELOG.md); deferred work is in [TODOS.md](TODOS.md).
