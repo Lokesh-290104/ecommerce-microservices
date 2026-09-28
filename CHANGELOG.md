@@ -3,6 +3,15 @@
 All notable changes to this project are documented here. Versions use the
 `MAJOR.MINOR.PATCH.MICRO` format.
 
+## [0.9.0.0] - 2026-09-28
+
+### Added
+- CI now runs the headline demo end to end on every push and pull request: it builds the
+  images, starts the whole stack, stops payments mid-checkout and checks the order still ends
+  up paid, with service logs attached if it fails.
+- Service images are published to GitHub Container Registry on every push to `main`.
+- README: next steps and final status.
+
 ## [0.8.0.0] - 2026-09-28
 
 ### Changed

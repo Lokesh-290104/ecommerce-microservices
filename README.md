@@ -38,7 +38,8 @@ granted only its own schema, so a cross-service join is refused by the database 
 - [x] JWT authentication (HS256): login, per-user ownership checks, service-only endpoints, short-lived service tokens
 - [x] Inventory reservations: all-or-nothing, idempotent reserve / commit / release,
       tested with real concurrent races (20 buyers, last 5 units: exactly 5 succeed)
-- [x] Integration tests on real MySQL (Testcontainers) + GitHub Actions CI
+- [x] Integration tests on real MySQL (Testcontainers) + GitHub Actions CI, including an
+      end-to-end job that runs the outage demo on every push, and images on GHCR
 - [x] Payments: simulated gateway, at most one payment per order (10 concurrent charges -> 1 row),
       and a demo switch that delays charge responses to reproduce timeouts
 - [x] Checkout saga: idempotency keys, circuit breakers and timeouts (Resilience4j), and a
@@ -247,3 +248,14 @@ Then on Windows: `setx DOCKER_HOST tcp://localhost:2375` and open a new terminal
 > shuts an idle VM down; `vmIdleTimeout` in `.wslconfig` controls that).
 
 Release notes are in [CHANGELOG.md](CHANGELOG.md); deferred work is in [TODOS.md](TODOS.md).
+
+## Next steps
+
+Deliberately left out of this version (each is in [TODOS.md](TODOS.md) with the reasoning):
+
+- **Order expiry, payment void and user cancel.** Today an order stays `PAYMENT_PENDING`, with
+  its stock held, for as long as payments is down. Expiry plus void would bound that, at the cost
+  of new races between void, charge and cancel (cut in design D22).
+- **RS256 + JWKS** instead of one shared HS256 secret, so only user-service can sign tokens.
+- **Keyset pagination** for the listings (deep `OFFSET` pages still get slower linearly).
+- **Transactional outbox + events** instead of the reconciler polling every 15 s.
